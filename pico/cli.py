@@ -66,6 +66,7 @@ SECRET_ENV_NAMES_VAR = "PICO_SECRET_ENV_NAMES"
 
 
 def _effective_provider(args):
+    #决定使用什么模型提供商
     # Provider 选择优先级：
     # 1. 用户显式传入 --provider
     # 2. 项目 .env / shell 里的 PICO_PROVIDER

@@ -167,6 +167,7 @@ class Pico:
 
     @staticmethod
     def remember(bucket, item, limit):
+        #pico 记忆层中 recent_files 的底层机制
         if not item:
             return
         if item in bucket:

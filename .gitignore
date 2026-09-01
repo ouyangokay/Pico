@@ -53,3 +53,11 @@ docs/*
 
 # Packaging metadata
 pico.egg-info/
+
+
+# IDE
+.idea/
+
+# Personal interview notes
+PICO_INTERVIEW_QA.md
+PICO_STAR_INTERVIEW.md
