@@ -229,6 +229,18 @@ ollama pull qwen3.5:4b
 uv run pico --provider ollama --model qwen3.5:4b
 ```
 
+### 输出 token 上限
+
+`--max-new-tokens` 控制每步模型输出的最大 token 数，也可以在 `.env` 里设 `PICO_MAX_NEW_TOKENS`（默认 4096）。优先级是 `--max-new-tokens` > `PICO_MAX_NEW_TOKENS` > 4096。
+
+reasoning 模型（如 `deepseek-v4-pro`）会先输出 thinking 再输出 text。如果这个值太小，模型可能在思考阶段就用光 token，`text` 段没生成就被截断，pico 会报 "the reasoning model used all ... output tokens on thinking"。调大这个值即可。
+
+### 步数上限
+
+`--max-steps` 控制每次请求里 agent 最多执行几轮工具调用（默认 30），也可以在 `.env` 里设 `PICO_MAX_STEPS`。优先级是 `--max-steps` > `PICO_MAX_STEPS` > 30。
+
+reasoning 模型做"分析仓库""读代码再下结论"这类开放任务时，常会连续多次 `list_files`/`read_file` 探索。如果步数太小，agent 还没给最终答案就被截停，pico 报 "Stopped after reaching the step limit without a final answer"。把步数调大即可。
+
 ## 常用交互命令
 
 - `/help`：查看内置命令

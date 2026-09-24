@@ -35,6 +35,14 @@ def test_workspace_escape_is_rejected(tmp_path):
     assert "path escapes workspace" in result
 
 
+def test_find_files_workspace_escape_is_rejected(tmp_path):
+    agent = build_agent(tmp_path, [])
+
+    result = agent.run_tool("find_files", {"pattern": "*.txt", "path": "../"})
+
+    assert "path escapes workspace" in result
+
+
 def test_symlink_path_traversal_is_rejected(tmp_path):
     outside = tmp_path.parent / f"{tmp_path.name}-outside.txt"
     outside.write_text("outside\n", encoding="utf-8")

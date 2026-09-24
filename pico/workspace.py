@@ -8,7 +8,7 @@ import subprocess
 import textwrap
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 MAX_TOOL_OUTPUT = 4000
@@ -20,7 +20,8 @@ IGNORED_PATH_NAMES = {".git", ".pico", "__pycache__", ".pytest_cache", ".ruff_ca
 
 
 def now():
-    return datetime.now(timezone.utc).isoformat()
+    """当前本地时间的 ISO 8601 字符串（带本地时区偏移，如 +08:00）。"""
+    return datetime.now().astimezone().isoformat()
 
 
 def clip(text, limit=MAX_TOOL_OUTPUT):
