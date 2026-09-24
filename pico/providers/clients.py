@@ -438,4 +438,15 @@ class AnthropicCompatibleModelClient:
         text = _extract_anthropic_text(data)
         if text:
             return text
-        raise RuntimeError("Anthropic-compatible error: could not extract text from response")
+        stop_reason = data.get("stop_reason", "")
+        content_types = [item.get("type") for item in data.get("content", []) if isinstance(item, dict)]
+        if "thinking" in content_types and stop_reason == "max_tokens":
+            raise RuntimeError(
+                "Anthropic-compatible error: the reasoning model used all "
+                f"{max_new_tokens} output tokens on thinking without emitting a text answer "
+                f"(stop_reason={stop_reason!r}). Increase --max-new-tokens or set PICO_MAX_NEW_TOKENS in .env."
+            )
+        raise RuntimeError(
+            "Anthropic-compatible error: could not extract text from response "
+            f"(stop_reason={stop_reason!r}, content_types={content_types})."
+        )

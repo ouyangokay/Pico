@@ -267,6 +267,22 @@ def test_list_files_hides_internal_agent_state(tmp_path):
     assert "[F] hello.txt" in result
 
 
+def test_find_files_hides_internal_agent_state(tmp_path):
+    agent = build_agent(tmp_path, [])
+    (tmp_path / ".pico").mkdir(exist_ok=True)
+    (tmp_path / ".pico" / "secret.py").write_text("secret\n", encoding="utf-8")
+    (tmp_path / ".git").mkdir(exist_ok=True)
+    (tmp_path / ".git" / "config").write_text("git\n", encoding="utf-8")
+    (tmp_path / "hello.py").write_text("hi\n", encoding="utf-8")
+
+    result = agent.run_tool("find_files", {"pattern": "*.py"})
+
+    assert ".pico" not in result
+    assert ".git" not in result
+    assert "secret.py" not in result
+    assert "[F] hello.py" in result
+
+
 def test_repeated_identical_tool_call_is_rejected(tmp_path):
     agent = build_agent(tmp_path, [])
     agent.record({"role": "tool", "name": "list_files", "args": {}, "content": "(empty)", "created_at": "1"})
@@ -1570,6 +1586,60 @@ def test_explicit_memory_promotion_supports_chinese_intent_and_labels(tmp_path):
 
     assert "优先使用受约束工具，不要靠猜。" in conventions_path.read_text(encoding="utf-8")
     assert "持久记忆保持轻量、按 topic 管理。" in decisions_path.read_text(encoding="utf-8")
+
+
+def test_explicit_memory_promotion_tolerates_echo_prefix_before_label(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        ["<final>已记住：项目约定：登录失败最多 3 次。</final>"],
+    )
+
+    agent.ask("记住：项目约定：登录失败最多 3 次")
+
+    conventions_path = tmp_path / ".pico" / "memory" / "topics" / "project-conventions.md"
+    report = json.loads(agent.run_store.report_path(agent.current_task_state).read_text(encoding="utf-8"))
+
+    assert report["durable_promotions"] == ["project-conventions: 登录失败最多 3 次。"]
+    assert "登录失败最多 3 次。" in conventions_path.read_text(encoding="utf-8")
+
+
+def test_explicit_memory_promotion_tolerates_copula_or_dash_separator(tmp_path):
+    # 模型常把 "项目约定：" 改写成 "项目约定为…" / "项目约定 — …"，
+    # 分隔符不再是冒号，仍应被识别为 durable 事实。
+    agent = build_agent(
+        tmp_path,
+        ["<final>已记住：项目约定为登录失败最多 3 次。\n决策 — 登录失败最多 3 次。</final>"],
+    )
+
+    agent.ask("记住：项目约定：登录失败最多 3 次")
+
+    conventions_path = tmp_path / ".pico" / "memory" / "topics" / "project-conventions.md"
+    decisions_path = tmp_path / ".pico" / "memory" / "topics" / "key-decisions.md"
+    report = json.loads(agent.run_store.report_path(agent.current_task_state).read_text(encoding="utf-8"))
+
+    assert report["durable_promotions"] == [
+        "project-conventions: 登录失败最多 3 次。",
+        "key-decisions: 登录失败最多 3 次。",
+    ]
+    assert "登录失败最多 3 次。" in conventions_path.read_text(encoding="utf-8")
+    assert "登录失败最多 3 次。" in decisions_path.read_text(encoding="utf-8")
+
+
+def test_explicit_memory_promotion_falls_back_to_user_message_when_label_dropped(tmp_path):
+    # 模型回显时可能把「项目约定」标签整个丢掉，只回「已记住：登录失败最多 3 次」，
+    # 此时应从用户原话（保留了规范标签）中提取。
+    agent = build_agent(
+        tmp_path,
+        ["<final>好的，已记住：登录失败最多 3 次。</final>"],
+    )
+
+    agent.ask("记住：项目约定：登录失败最多 3 次")
+
+    conventions_path = tmp_path / ".pico" / "memory" / "topics" / "project-conventions.md"
+    report = json.loads(agent.run_store.report_path(agent.current_task_state).read_text(encoding="utf-8"))
+
+    assert report["durable_promotions"] == ["project-conventions: 登录失败最多 3 次"]
+    assert "登录失败最多 3 次" in conventions_path.read_text(encoding="utf-8")
 
 
 def test_explicit_memory_promotion_rejects_secret_shaped_and_transient_lines(tmp_path):

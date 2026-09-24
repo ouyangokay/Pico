@@ -106,6 +106,29 @@ def _effective_model(args, provider):
     return DEFAULT_OLLAMA_MODEL
 
 
+def _effective_max_new_tokens(args):
+    # max_new_tokens 选择优先级：
+    # 1. 用户显式传入 --max-new-tokens
+    # 2. .env / shell 里的 PICO_MAX_NEW_TOKENS
+    # 3. 代码默认 4096
+    # reasoning 模型会先输出 thinking 再输出 text，偏紧的默认值会让 thinking
+    # 阶段就把额度用光，text 段没生成就被截断（stop_reason=max_tokens）。
+    if args.max_new_tokens is not None:
+        return args.max_new_tokens
+    return int(provider_env("PICO_MAX_NEW_TOKENS", default="4096"))
+
+
+def _effective_max_steps(args):
+    # max_steps 选择优先级：
+    # 1. 用户显式传入 --max-steps
+    # 2. .env / shell 里的 PICO_MAX_STEPS
+    # 3. 代码默认 30
+    # 12 步对 reasoning 模型做分析类任务偏紧，常见探索还没完成就被截停。
+    if args.max_steps is not None:
+        return args.max_steps
+    return int(provider_env("PICO_MAX_STEPS", default="30"))
+
+
 def _configured_secret_names(args):
     configured_secret_names = set(DEFAULT_SECRET_ENV_NAMES)
     configured_secret_names.update(str(name).upper() for name in args.secret_env_names)
@@ -252,8 +275,8 @@ def build_agent(args):
             session_store=store,
             session_id=session_id,
             approval_policy=args.approval,
-            max_steps=args.max_steps,
-            max_new_tokens=args.max_new_tokens,
+            max_steps=_effective_max_steps(args),
+            max_new_tokens=_effective_max_new_tokens(args),
             secret_env_names=configured_secret_names,
         )
     return Pico(
@@ -261,8 +284,8 @@ def build_agent(args):
         workspace=workspace,
         session_store=store,
         approval_policy=args.approval,
-        max_steps=args.max_steps,
-        max_new_tokens=args.max_new_tokens,
+        max_steps=_effective_max_steps(args),
+        max_new_tokens=_effective_max_new_tokens(args),
         secret_env_names=configured_secret_names,
     )
 
@@ -298,8 +321,8 @@ def build_arg_parser():
         default=[],
         help="Extra environment variable names to treat as secrets for trace/report redaction.",
     )
-    parser.add_argument("--max-steps", type=int, default=6, help="Maximum tool/model iterations per request.")
-    parser.add_argument("--max-new-tokens", type=int, default=512, help="Maximum model output tokens per step.")
+    parser.add_argument("--max-steps", type=int, default=None, help="Maximum tool/model iterations per request. Defaults to PICO_MAX_STEPS or 30.")
+    parser.add_argument("--max-new-tokens", type=int, default=None, help="Maximum model output tokens per step. Defaults to PICO_MAX_NEW_TOKENS or 4096.")
     parser.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature sent to Ollama.")
     parser.add_argument("--top-p", type=float, default=0.9, help="Top-p sampling value sent to Ollama.")
     return parser

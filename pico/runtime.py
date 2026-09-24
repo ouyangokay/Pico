@@ -36,14 +36,14 @@ DEFAULT_FEATURE_FLAGS = {
 DURABLE_MEMORY_INTENT_PATTERN = re.compile(r"(?i)\b(capture|remember|save|store|persist|note)\b")
 DURABLE_MEMORY_INTENT_ZH_PATTERN = re.compile(r"(记住|保存|记录|沉淀|长期记忆|持久记忆)")
 DURABLE_MEMORY_LINE_PATTERNS = (
-    ("project-conventions", re.compile(r"(?i)^Project convention:\s*(.+)$")),
-    ("key-decisions", re.compile(r"(?i)^Decision:\s*(.+)$")),
-    ("dependency-facts", re.compile(r"(?i)^Dependency:\s*(.+)$")),
-    ("user-preferences", re.compile(r"(?i)^Preference:\s*(.+)$")),
-    ("project-conventions", re.compile(r"^项目约定：\s*(.+)$")),
-    ("key-decisions", re.compile(r"^决策：\s*(.+)$")),
-    ("dependency-facts", re.compile(r"^依赖：\s*(.+)$")),
-    ("user-preferences", re.compile(r"^偏好：\s*(.+)$")),
+    ("project-conventions", re.compile(r"(?i)\bProject convention\s*[:：是为—\-=]?\s*(.+)")),
+    ("key-decisions", re.compile(r"(?i)\bDecision\s*[:：是为—\-=]?\s*(.+)")),
+    ("dependency-facts", re.compile(r"(?i)\bDependency\s*[:：是为—\-=]?\s*(.+)")),
+    ("user-preferences", re.compile(r"(?i)\bPreference\s*[:：是为—\-=]?\s*(.+)")),
+    ("project-conventions", re.compile(r"项目约定\s*[:：是为—\-=]?\s*(.+)")),
+    ("key-decisions", re.compile(r"决策\s*[:：是为—\-=]?\s*(.+)")),
+    ("dependency-facts", re.compile(r"依赖\s*[:：是为—\-=]?\s*(.+)")),
+    ("user-preferences", re.compile(r"偏好\s*[:：是为—\-=]?\s*(.+)")),
 )
 SECRET_SHAPED_TEXT_PATTERN = re.compile(r"(?i)(\b(api[_ -]?key|token|secret|password)\b|sk-[A-Za-z0-9_-]{6,})")
 
@@ -467,18 +467,13 @@ class Pico:
             return "noisy_output"
         return ""
 
-    def extract_durable_promotions(self, user_message, final_answer):
-        user_text = str(user_message or "")
-        if not (DURABLE_MEMORY_INTENT_PATTERN.search(user_text) or DURABLE_MEMORY_INTENT_ZH_PATTERN.search(user_text)):
-            return [], []
-        promotions = []
-        rejections = []
-        for line in str(final_answer or "").splitlines():
-            text = line.strip()
-            if not text or REDACTED_VALUE in text:
+    def _extract_durable_from_text(self, text, promotions, rejections):
+        for line in str(text or "").splitlines():
+            line = line.strip()
+            if not line or REDACTED_VALUE in line:
                 continue
             for topic, pattern in DURABLE_MEMORY_LINE_PATTERNS:
-                match = pattern.match(text)
+                match = pattern.search(line)
                 if not match:
                     continue
                 note_text = match.group(1).strip()
@@ -489,6 +484,18 @@ class Pico:
                         break
                     promotions.append((topic, note_text))
                 break
+
+    def extract_durable_promotions(self, user_message, final_answer):
+        user_text = str(user_message or "")
+        if not (DURABLE_MEMORY_INTENT_PATTERN.search(user_text) or DURABLE_MEMORY_INTENT_ZH_PATTERN.search(user_text)):
+            return [], []
+        promotions = []
+        rejections = []
+        self._extract_durable_from_text(final_answer, promotions, rejections)
+        if not promotions:
+            # 模型回显时可能把标签整个丢掉（如「已记住：登录失败最多 3 次」），
+            # 此时退回扫描用户原话——用户输入里通常保留了「项目约定：…」的规范格式。
+            self._extract_durable_from_text(user_text, promotions, rejections)
         return promotions, rejections
 
     def promote_durable_memory(self, user_message, final_answer):
@@ -616,6 +623,9 @@ class Pico:
 
     def tool_search(self, args):
         return toolkit.tool_search(self.tool_context(), args)
+
+    def tool_find_files(self, args):
+        return toolkit.tool_find_files(self.tool_context(), args)
 
     def tool_run_shell(self, args):
         return toolkit.tool_run_shell(self.tool_context(), args)

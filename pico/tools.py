@@ -8,8 +8,11 @@ import shutil
 import subprocess
 import textwrap
 from functools import partial
+from pathlib import Path
 
 from .workspace import IGNORED_PATH_NAMES
+
+FIND_FILES_LIMIT = 200
 
 BASE_TOOL_SPECS = {
     "list_files": {
@@ -26,6 +29,11 @@ BASE_TOOL_SPECS = {
         "schema": {"pattern": "str", "path": "str='.'"},
         "risky": False,
         "description": "Search the workspace with rg or a simple fallback.",
+    },
+    "find_files": {
+        "schema": {"pattern": "str", "path": "str='.'"},
+        "risky": False,
+        "description": "Recursively find files and directories by glob pattern.",
     },
     "run_shell": {
         "schema": {"command": "str", "timeout": "int=20"},
@@ -58,6 +66,7 @@ TOOL_EXAMPLES = {
     "list_files": '<tool>{"name":"list_files","args":{"path":"."}}</tool>',
     "read_file": '<tool>{"name":"read_file","args":{"path":"README.md","start":1,"end":80}}</tool>',
     "search": '<tool>{"name":"search","args":{"pattern":"binary_search","path":"."}}</tool>',
+    "find_files": '<tool>{"name":"find_files","args":{"pattern":"*.py","path":"."}}</tool>',
     "run_shell": '<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":20}}</tool>',
     "write_file": '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
     "patch_file": '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
@@ -107,6 +116,13 @@ def validate_tool(context, name, args):
         if not pattern:
             raise ValueError("pattern must not be empty")
         context.path(args.get("path", "."))
+        return
+
+    if name == "find_files":
+        _find_files_pattern(args)
+        path = context.path(args.get("path", "."))
+        if not path.is_dir():
+            raise ValueError("path is not a directory")
         return
 
     if name == "run_shell":
@@ -210,6 +226,37 @@ def tool_search(context, args):
     return "\n".join(matches) or "(no matches)"
 
 
+def _find_files_pattern(args):
+    pattern = str(args.get("pattern", "")).strip().replace("\\", "/")
+    if not pattern or set(pattern) <= {"/"}:
+        raise ValueError("pattern must not be empty")
+    return pattern
+
+
+def tool_find_files(context, args):
+    pattern = _find_files_pattern(args)
+    path = context.path(args.get("path", "."))
+    if not path.is_dir():
+        raise ValueError("path is not a directory")
+
+    matches = []
+    for item in path.rglob("*"):
+        try:
+            relative = item.relative_to(context.root)
+        except ValueError:
+            continue
+        if any(part in IGNORED_PATH_NAMES for part in relative.parts):
+            continue
+        if not Path(relative.as_posix()).match(pattern):
+            continue
+        kind = "[D]" if item.is_dir() else "[F]"
+        matches.append((item.is_file(), str(relative).lower(), f"{kind} {relative}"))
+
+    matches.sort()
+    lines = [line for _, _, line in matches[:FIND_FILES_LIMIT]]
+    return "\n".join(lines) or "(no matches)"
+
+
 def tool_run_shell(context, args):
     command = str(args.get("command", "")).strip()
     if not command:
@@ -277,6 +324,7 @@ _TOOL_RUNNERS = {
     "list_files": tool_list_files,
     "read_file": tool_read_file,
     "search": tool_search,
+    "find_files": tool_find_files,
     "run_shell": tool_run_shell,
     "write_file": tool_write_file,
     "patch_file": tool_patch_file,
